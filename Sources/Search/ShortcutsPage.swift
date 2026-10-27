@@ -33,7 +33,7 @@ struct ShortcutsPage: View {
                 let commands = found.filter { $0.section == section }
                 if !commands.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Caption(section.rawValue)
+                    Caption(section.title)
                     Card {
                         ForEach(Array(commands.enumerated()), id: \.element.id) { index, command in
                             if index > 0 { Rule() }
@@ -151,6 +151,10 @@ private struct KeyBox: View {
         store.recording = true
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             take(event)
+            // The recorder may explain a reserved chord, but it must still
+            // reach macOS (notably Control-F and Fn/Globe window tiling).
+            if event.modifierFlags.contains(.function)
+                || KeyCombo(event: event).map(KeyCombo.isReserved) == true { return event }
             return nil
         }
     }
@@ -163,8 +167,8 @@ private struct KeyBox: View {
             return stop()
         }
         guard let combo = KeyCombo(event: event) else { return }
-        guard combo.isUsable else { return say("Add ⌘, ⌥ or ⌃") }
         guard !KeyCombo.isReserved(combo) else { return say("Can’t be changed") }
+        guard combo.isUsable else { return say("Add ⌘, ⌥ or ⌃") }
         // The switcher stays up while its key's ⌃, ⌥ or ⌘ is held, and
         // takes the tab picked when it is let go of: a key needs one.
         guard id != Command.recentTabs || combo.control || combo.option || combo.command

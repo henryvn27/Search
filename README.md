@@ -18,6 +18,9 @@ It uses **WebKit**, the engine already inside every Mac (it is what Safari runs 
 
 It was built by a design studio that spends its whole day in a browser and was tired of the ones that had become products. This one is a tool.
 
+For the personal Pane fork, its separate app identity, keyboard changes and
+source-based update workflow are documented in [FORK.md](FORK.md).
+
 ## What it does
 
 - **One field.** Type an address and you go there; type words and you search. It finishes addresses from your own history and never sends what you type anywhere until you press Return.

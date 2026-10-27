@@ -897,15 +897,24 @@ struct SettingsPanel: View {
 
     private var aboutHeader: some View {
         HStack(spacing: 14) {
-            Logomark()
-                .fill(Palette.ink, style: FillStyle(eoFill: true))
-                .aspectRatio(Logomark.canvas.width / Logomark.canvas.height, contentMode: .fit)
-                .frame(height: 34)
+            if Store.personalFork {
+                Image(systemName: "rectangle.split.2x1")
+                    .font(.system(size: 25, weight: .medium))
+                    .foregroundStyle(Palette.ink)
+                    .frame(width: 34, height: 34)
+            } else {
+                Logomark()
+                    .fill(Palette.ink, style: FillStyle(eoFill: true))
+                    .aspectRatio(Logomark.canvas.width / Logomark.canvas.height, contentMode: .fit)
+                    .frame(height: 34)
+            }
             VStack(alignment: .leading, spacing: 3) {
-                Text("Search")
+                Text(Store.appName)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Palette.ink)
-                Text("by Office Commun · version \(Updater.version)")
+                Text(Store.personalFork
+                     ? "Personal fork · version \(Updater.version)"
+                     : "by Office Commun · version \(Updater.version)")
                     .font(.system(size: 12))
                     .foregroundStyle(Palette.muted)
             }
@@ -915,6 +924,7 @@ struct SettingsPanel: View {
     /// The version line follows the newer build from found to fetched to
     /// in place; with none, it is simply this one.
     private var versionTitle: String {
+        if Store.personalFork { return "Updates from source" }
         switch updater.stage {
         case .none: return "Updates"
         case .fetching(let next): return "Search \(next.version) is downloading…"
@@ -924,6 +934,9 @@ struct SettingsPanel: View {
     }
 
     private var versionDetail: String {
+        if Store.personalFork {
+            return "Merge upstream Search changes into your fork, then rebuild Pane."
+        }
         switch updater.stage {
         case .none:
             return updater.lastChecked.map { "Checked \($0.formatted(.relative(presentation: .named))), every hour on its own" }
@@ -941,6 +954,10 @@ struct SettingsPanel: View {
 
     @ViewBuilder
     private var versionControl: some View {
+        if Store.personalFork {
+            Text("GitHub fork")
+                .help("Merge upstream changes into your fork, then rebuild Pane")
+        } else {
         switch updater.stage {
         case .none:
             Pill(updater.checking ? "Checking…" : "Check now") {
@@ -958,6 +975,7 @@ struct SettingsPanel: View {
                 .disabled(updater.fetchingDisk)
         case .waiting:
             Pill("Install", filled: true) { updater.install() }
+        }
         }
     }
 

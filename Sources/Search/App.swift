@@ -39,7 +39,7 @@ struct SearchApp: App {
         // shares, and a probe resized for a test once changed the size the
         // real window came back at. The other windows' frames are in
         // windows.json (see Windows.swift).
-        Window("Search", id: Browsers.sceneID) {
+        Window(Store.appName, id: Browsers.sceneID) {
             SceneRoot(slot: SceneSlot.shared)
                 .frame(minWidth: 640, minHeight: 420)
         }
@@ -258,6 +258,9 @@ struct SearchApp: App {
                     Button("Focus Right Page") { browser.focusPane(onLeft: false) }
                         .shortcut("tabs.focusRightPane")
                         .disabled(browser.activeSplit == nil)
+                    Button("Focus Other Page") { browser.focusOtherPane() }
+                        .shortcut("tabs.focusOtherPane")
+                        .disabled(browser.activeSplit == nil)
                     Button("Swap Pages") { browser.swapSplit() }
                         .shortcut("tabs.swapSplit")
                         .disabled(browser.activeSplit == nil)
@@ -357,7 +360,9 @@ struct SearchApp: App {
                     .shortcut("history.clear")
             }
             // Search › Check for Updates…, under About, as in any Mac app.
-            CommandGroup(after: .appInfo) { UpdateMenuItem() }
+            CommandGroup(after: .appInfo) {
+                if !Store.personalFork { UpdateMenuItem() }
+            }
             CommandGroup(after: .appSettings) {
                 Button("Settings…") { browser.tuning = true }
                     .shortcut("app.settings")
@@ -376,7 +381,7 @@ struct SearchApp: App {
 private struct QuitAndHelp: Commands {
     var body: some Commands {
         CommandGroup(replacing: .appTermination) {
-            Button("Quit Search") {
+            Button("Quit \(Store.appName)") {
                 if Links.shouldQuit() { NSApp.terminate(nil) }
             }
             .keyboardShortcut("q", modifiers: .command)
@@ -1139,6 +1144,9 @@ struct ContentView: View {
             // those of windows that aren't a browser's (a panel, the little
             // window).
             guard mine(event) else { return event }
+            // Fn/Globe shortcuts (including macOS Move & Resize) belong to
+            // the system before Search's tab switcher or page commands.
+            if event.type == .keyDown, event.modifierFlags.contains(.function) { return event }
             guard event.type == .keyDown else {
                 let held = browser.prefs.showsTabShortcuts && event.modifierFlags.contains(.command)
                 if browser.commandHeld != held { browser.commandHeld = held }
@@ -1296,6 +1304,7 @@ struct ContentView: View {
     ]
 
     private func take(_ event: NSEvent) -> Bool {
+        if event.modifierFlags.contains(.function) { return false }
         // A question hanging from the window (Ask) answers its own keys. Esc
         // there is its Cancel: taken here, it closed the panel under it and
         // left the question up, with Return still on its first button.
@@ -1425,14 +1434,31 @@ struct ContentView: View {
             return true
         }
 
-        // Keep split focus ahead of WebKit's arrow-key handling. Its panes
-        // remain native first responders, so the menu shortcut alone would
-        // never see ⌃⌘→ on a page.
-        if browser.prefs.splitView, browser.activeSplit != nil, let combo = KeyCombo(event: event) {
-            let store = ShortcutStore.shared
-            if combo == store.key(for: "tabs.focusLeftPane") { browser.focusPane(onLeft: true); return true }
-            if combo == store.key(for: "tabs.focusRightPane") { browser.focusPane(onLeft: false); return true }
-            if combo == store.key(for: "tabs.focusOtherPane") { browser.focusOtherPane(); return true }
+        // Split commands are page-first, like Find and Reload: sites and
+        // editable fields keep their own keys, and Search acts only when the
+        // page leaves the shortcut unused. Fn/Globe shortcuts never match a
+        // Search command (KeyCombo.isReserved).
+        if browser.prefs.splitView, let combo = KeyCombo(event: event),
+           let command = Command.all.first(where: {
+               Command.split.contains($0.id) && ShortcutStore.shared.key(for: $0.id) == combo
+           }) {
+            let enabled: Bool
+            switch command.id {
+            case "tabs.split": enabled = browser.active != nil && browser.active?.bench != true
+            default: enabled = browser.activeSplit != nil
+            }
+            if enabled {
+                // WebKit consumes modified arrows for page scrolling and
+                // never hands them back, so pane focus stays ahead of it.
+                if ["tabs.focusLeftPane", "tabs.focusRightPane"].contains(command.id) {
+                    if caretIn(event) { return false }
+                    command.run(browser)
+                    return true
+                }
+                if caretIn(event) || pageFirst(event, key: combo.key, shifted: combo.shift) { return false }
+                command.run(browser)
+                return true
+            }
         }
 
         // ⌘Return keeps a peek, as its other button does: Return or the

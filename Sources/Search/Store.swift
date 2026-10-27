@@ -19,6 +19,25 @@ enum Store {
         return Bundle.main.executablePath?.contains("/.build/") == true
     }
 
+    /// Test targets use Search's test identity; a separately built app reads
+    /// its own name and bundle id from the bundle installed beside Search.
+    static var appIdentifier: String {
+        testing ? "com.officecommun.search" : Bundle.main.bundleIdentifier ?? "com.officecommun.search"
+    }
+
+    static var personalFork: Bool {
+        !testing && appIdentifier != "com.officecommun.search"
+    }
+
+    static var appName: String {
+        guard personalFork,
+              let name = (Bundle.main.object(forInfoDictionaryKey: "PersonalForkName")
+                          as? String ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String),
+              !name.isEmpty
+        else { return "Search" }
+        return name
+    }
+
     /// Which test world a test run lives in. SEARCH_PROBE=1, or a run from
     /// the build folder, is the test world, "Search (test)". SEARCH_PROBE=
     /// <name> is a world of its own, "Search (<name>)", with settings and
@@ -98,7 +117,7 @@ enum Store {
     /// differ from stores made by identifier in how long extension workers
     /// are let live.
     static var ownContainer: Bool {
-        (Bundle.main.bundleIdentifier ?? "") != "com.officecommun.search"
+        appIdentifier != "com.officecommun.search"
     }
 
     /// The fixed identifiers of a test world's WebKit stores: 1 for websites,
@@ -123,8 +142,9 @@ enum Store {
     static let folder: URL = {
         let support = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let home = support.appendingPathComponent(world.map { "Search (\($0))" } ?? "Search", isDirectory: true)
-        if !testing {
+        let name = world.map { "\(appName) (\($0))" } ?? appName
+        let home = support.appendingPathComponent(name, isDirectory: true)
+        if !testing, appIdentifier == "com.officecommun.search" {
             let old = support.appendingPathComponent("Office Browser", isDirectory: true)
             let files = FileManager.default
             if !files.fileExists(atPath: home.path), files.fileExists(atPath: old.path) {
@@ -156,7 +176,7 @@ enum Store {
     /// where the tabs go must not change yours.
     static let settings: UserDefaults = {
         guard testing else {
-            carryOver(into: .standard)
+            if appIdentifier == "com.officecommun.search" { carryOver(into: .standard) }
             return .standard
         }
         let suite = world == "test" ? "com.officecommun.search.test" : "com.officecommun.search.test.\(world ?? "")"

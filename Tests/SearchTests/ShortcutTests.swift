@@ -93,6 +93,45 @@ final class ShortcutTests: XCTestCase {
         XCTAssertNil(Store.settings.data(forKey: "shortcuts"))
     }
 
+    func testFnShortcutsStayWithMacAndCmdFRemainsFind() throws {
+        let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero,
+            modifierFlags: [.control, .function], timestamp: 0, windowNumber: 0, context: nil,
+            characters: "f", charactersIgnoringModifiers: "f", isARepeat: false, keyCode: 3))
+        let fillWindow = try XCTUnwrap(KeyCombo(event: event))
+        XCTAssertTrue(fillWindow.function)
+        XCTAssertTrue(KeyCombo.isReserved(fillWindow))
+
+        for combo in [
+            KeyCombo("left", command: false, control: true, function: true),
+            KeyCombo("right", command: false, control: true, function: true),
+            KeyCombo("left", command: false, shift: true, control: true, function: true),
+            KeyCombo("down", command: false, shift: true, option: true, control: true, function: true),
+        ] {
+            XCTAssertTrue(KeyCombo.isReserved(combo), "\(combo.display) belongs to macOS")
+        }
+
+        XCTAssertTrue(KeyCombo.isReserved(KeyCombo("f", command: false, control: true)))
+        XCTAssertEqual(Command.named("edit.find")?.defaultKey, KeyCombo("f"))
+    }
+
+    func testSplitPaneDirectionShortcutsAvoidArrowKeys() throws {
+        let left = try XCTUnwrap(Command.named("tabs.focusLeftPane")?.defaultKey)
+        let right = try XCTUnwrap(Command.named("tabs.focusRightPane")?.defaultKey)
+
+        XCTAssertEqual(left, KeyCombo("[", control: true))
+        XCTAssertEqual(right, KeyCombo("]", control: true))
+        XCTAssertFalse(KeyCombo.isReserved(left))
+        XCTAssertFalse(KeyCombo.isReserved(right))
+        XCTAssertNotNil(left.swiftUI)
+        XCTAssertNotNil(right.swiftUI)
+    }
+
+    func testSavedShortcutsWithoutFunctionFieldStillLoad() throws {
+        let old = Data(#"{"tabs.focusOtherPane":{"key":{"key":"p","command":true,"shift":false,"option":false,"control":true}}}"#.utf8)
+        Store.settings.set(old, forKey: "shortcuts")
+        XCTAssertEqual(ShortcutStore().key(for: "tabs.focusOtherPane"), KeyCombo("p", control: true))
+    }
+
     func testSpaceKeysReadPhysicalDigitsOnOtherLayouts() throws {
         let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero,
             modifierFlags: [.control], timestamp: 0, windowNumber: 0, context: nil,

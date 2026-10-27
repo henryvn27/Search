@@ -16,8 +16,25 @@ struct KeyCombo: Codable, Hashable {
     var shift = false
     var option = false
     var control = false
+    /// Fn/Globe is reserved for macOS window tiling and focus shortcuts.
+    var function = false
 
-    init(_ key: String, command: Bool = true, shift: Bool = false, option: Bool = false, control: Bool = false) {
+    private enum CodingKeys: String, CodingKey { case key, command, shift, option, control, function }
+
+    /// `function` was added after shortcut preferences existed in the wild.
+    /// Older saved combinations remain valid and default to no Fn modifier.
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        key = try values.decode(String.self, forKey: .key)
+        command = try values.decodeIfPresent(Bool.self, forKey: .command) ?? false
+        shift = try values.decodeIfPresent(Bool.self, forKey: .shift) ?? false
+        option = try values.decodeIfPresent(Bool.self, forKey: .option) ?? false
+        control = try values.decodeIfPresent(Bool.self, forKey: .control) ?? false
+        function = try values.decodeIfPresent(Bool.self, forKey: .function) ?? false
+    }
+
+    init(_ key: String, command: Bool = true, shift: Bool = false, option: Bool = false,
+         control: Bool = false, function: Bool = false) {
         // ⌘+ is ⇧⌘= on some keyboards and a key of its own on others; both
         // mean the same thing, so both are kept as "+" with nothing about ⇧.
         let plus = key == "=" || key == "+"
@@ -26,6 +43,7 @@ struct KeyCombo: Codable, Hashable {
         self.command = command
         self.option = option
         self.control = control
+        self.function = function
     }
 
     /// The key an event pressed, read the way the keyboard's own layout
@@ -37,7 +55,8 @@ struct KeyCombo: Codable, Hashable {
         let key = named ?? event.shortcutKey
         guard !key.isEmpty else { return nil }
         self.init(key, command: flags.contains(.command), shift: flags.contains(.shift),
-                  option: flags.contains(.option), control: flags.contains(.control))
+                  option: flags.contains(.option), control: flags.contains(.control),
+                  function: flags.contains(.function))
     }
 
     private static let names: [UInt16: String] = [
@@ -54,7 +73,8 @@ struct KeyCombo: Codable, Hashable {
 
     /// As a menu shows it: ⌃⌥⇧⌘ then the key.
     var display: String {
-        (control ? "⌃" : "") + (option ? "⌥" : "") + (shift ? "⇧" : "") + (command ? "⌘" : "")
+        (function ? "Fn" : "") + (control ? "⌃" : "") + (option ? "⌥" : "")
+            + (shift ? "⇧" : "") + (command ? "⌘" : "")
             + (KeyCombo.symbols[key] ?? key.uppercased())
     }
 
@@ -74,6 +94,8 @@ struct KeyCombo: Codable, Hashable {
     var isUsable: Bool { command || option || control || isFunctionKey }
 
     var swiftUI: KeyboardShortcut? {
+        // Function/Globe combinations belong to macOS, not to Search's menus.
+        guard !function else { return nil }
         let equivalent: KeyEquivalent
         switch key {
         case "left": equivalent = .leftArrow
@@ -106,12 +128,15 @@ struct KeyCombo: Codable, Hashable {
     /// Mac. Tab with ⌃ or ⌥ is a key like another: ⌃Tab is the recent-tabs
     /// switcher's until it is given to something else, as in Arc.
     static func isReserved(_ combo: KeyCombo) -> Bool {
+        // Leave Fn/Globe shortcuts to macOS. This includes its window tiling
+        // keys (Fn-⌃-F and Fn-⌃-arrows) and keyboard-focus keys.
+        if combo.function { return true }
         let system: Set<KeyCombo> = [
             KeyCombo("q"), KeyCombo("q", option: true), KeyCombo("q", control: true),
             KeyCombo("q", shift: true), KeyCombo("q", shift: true, option: true),
             KeyCombo("h"), KeyCombo("h", option: true), KeyCombo("m"), KeyCombo("m", option: true),
             KeyCombo("c"), KeyCombo("v"), KeyCombo("x"), KeyCombo("a"), KeyCombo("z"), KeyCombo("z", shift: true),
-            KeyCombo("`"), KeyCombo("`", shift: true), KeyCombo("f", control: true),
+            KeyCombo("`"), KeyCombo("`", shift: true), KeyCombo("f", command: false, control: true),
             KeyCombo("space"), KeyCombo("space", command: false, control: true),
             KeyCombo("space", option: true), KeyCombo("space", command: false, option: true, control: true),
         ]
@@ -134,6 +159,8 @@ struct KeyCombo: Codable, Hashable {
 struct Command: Identifiable {
     enum Section: String, CaseIterable {
         case app = "Search", file = "File", edit = "Edit", view = "View", tabs = "Tabs", spaces = "Spaces", bookmarks = "Bookmarks", history = "History"
+
+        var title: String { self == .app ? Store.appName : rawValue }
     }
 
     let id: String
@@ -221,23 +248,23 @@ struct Command: Identifiable {
             guard browser.prefs.splitView else { return }
             browser.startSplit()
         },
-        Command("tabs.focusLeftPane", "Focus Left Page", .tabs, KeyCombo("left", control: true)) { browser in
+        Command("tabs.focusLeftPane", "Focus Left Page", .tabs, KeyCombo("[", control: true)) { browser in
             guard browser.prefs.splitView else { return }
             browser.focusPane(onLeft: true)
         },
-        Command("tabs.focusRightPane", "Focus Right Page", .tabs, KeyCombo("right", control: true)) { browser in
+        Command("tabs.focusRightPane", "Focus Right Page", .tabs, KeyCombo("]", control: true)) { browser in
             guard browser.prefs.splitView else { return }
             browser.focusPane(onLeft: false)
         },
-        Command("tabs.focusOtherPane", "Focus Other Page", .tabs, nil) { browser in
+        Command("tabs.focusOtherPane", "Focus Other Page", .tabs, KeyCombo("p", control: true)) { browser in
             guard browser.prefs.splitView else { return }
             browser.focusOtherPane()
         },
-        Command("tabs.swapSplit", "Swap Pages", .tabs, nil) { browser in
+        Command("tabs.swapSplit", "Swap Pages", .tabs, KeyCombo("s", shift: true, control: true)) { browser in
             guard browser.prefs.splitView else { return }
             browser.swapSplit()
         },
-        Command("tabs.separateSplit", "Separate Split Tabs", .tabs, nil) { browser in
+        Command("tabs.separateSplit", "Separate Split Tabs", .tabs, KeyCombo("d", shift: true, control: true)) { browser in
             guard browser.prefs.splitView, let tab = browser.active else { return }
             browser.detachSplit(tab)
         },
@@ -466,7 +493,8 @@ extension KeyCombo {
     init?(activation key: String?, flags: NSEvent.ModifierFlags) {
         guard let key, !key.isEmpty else { return nil }
         self.init(key, command: flags.contains(.command), shift: flags.contains(.shift),
-                  option: flags.contains(.option), control: flags.contains(.control))
+                  option: flags.contains(.option), control: flags.contains(.control),
+                  function: flags.contains(.function))
     }
 
     var flags: NSEvent.ModifierFlags {
@@ -475,6 +503,7 @@ extension KeyCombo {
         if shift { flags.insert(.shift) }
         if option { flags.insert(.option) }
         if control { flags.insert(.control) }
+        if function { flags.insert(.function) }
         return flags
     }
 }

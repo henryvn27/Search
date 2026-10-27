@@ -401,6 +401,7 @@ enum SettingsIndex {
         switch item.id {
         case "privacy.clickIDs": return ClickIDs.possible
         case "privacy.gpc": return PrivacySignal.possible
+        case "updates.auto": return !Store.personalFork
         default: return true
         }
     }

@@ -33,7 +33,7 @@ final class Links: NSObject, NSApplicationDelegate {
         askingToQuit = true
         defer { askingToQuit = false }
         let alert = NSAlert()
-        alert.messageText = "Quit Search?"
+        alert.messageText = "Quit \(Store.appName)?"
         alert.informativeText = "Your windows and tabs will close."
         alert.addButton(withTitle: "Quit").keyEquivalent = ""
         let cancel = alert.addButton(withTitle: "Cancel")

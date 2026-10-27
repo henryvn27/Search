@@ -5582,7 +5582,7 @@ final class Browser: NSObject, ObservableObject {
     func holdKey(_ event: NSEvent) -> Bool {
         guard let asked = focusAsked, CACurrentMediaTime() - asked < 0.5,
               fieldShowing, editingTab == nil,
-              event.modifierFlags.intersection([.command, .control]).isEmpty
+              event.modifierFlags.intersection([.command, .control, .function]).isEmpty
         else { return false }
         if heldKeys.isEmpty {
             // The field never came: what was typed goes where it would have.

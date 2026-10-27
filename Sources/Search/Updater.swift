@@ -132,6 +132,7 @@ final class Updater: ObservableObject {
     /// checks every time.
     func checkIfDue(then say: @escaping (String) -> Void) {
         self.say = say
+        guard !Store.personalFork else { return }
         Swap.sweep()
         // And again every hour for as long as the app is up — a browser that
         // is left open for a week would otherwise never look.
@@ -149,6 +150,7 @@ final class Updater: ObservableObject {
 
     /// Every hour, give or take the clock's tolerance: one small signed file.
     private func checkIfDue() {
+        guard !Store.personalFork else { return }
         let last = Store.settings.object(forKey: lastKey) as? Date ?? .distantPast
         guard Updater.overridden || Date().timeIntervalSince(last) > 60 * 50 else { return }
         check { _ in }
@@ -157,6 +159,10 @@ final class Updater: ObservableObject {
     /// Search › Check for Updates…: the result is said in the line at the
     /// foot of the window, and an available update is offered in the menu.
     func checkByHand() {
+        guard !Store.personalFork else {
+            say?("Update this fork by merging upstream changes and rebuilding \(Store.appName)")
+            return
+        }
         switch stage {
         case .ready(let next):
             say?("Search \(next.version) is ready — relaunch to use it")
@@ -179,6 +185,7 @@ final class Updater: ObservableObject {
     /// names, or nil when this is the latest; what becomes of it after that
     /// is said through the line handed to `checkIfDue`.
     func check(then done: @escaping (Release?) -> Void) {
+        guard !Store.personalFork else { done(nil); return }
         guard !checking else { return }
         checking = true
         Task { [weak self] in
@@ -214,7 +221,7 @@ final class Updater: ObservableObject {
     static var diskVerdict = ""
 
     func openDisk() {
-        guard case .offered(let release) = stage, !fetchingDisk else { return }
+        guard !Store.personalFork, case .offered(let release) = stage, !fetchingDisk else { return }
         fetchingDisk = true
         say?("Downloading Search \(release.version)…")
         Task.detached(priority: .utility) {
@@ -237,7 +244,7 @@ final class Updater: ObservableObject {
     /// Install, because somebody pressed it: the same fetch, checks and swap
     /// as on its own.
     func install() {
-        guard case .waiting(let release) = stage else { return }
+        guard !Store.personalFork, case .waiting(let release) = stage else { return }
         take(release)
     }
 

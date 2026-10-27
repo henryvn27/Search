@@ -57,8 +57,25 @@ case "$ARCH" in
   x86_64) OUT="build/intel"; SUBFOLDER="/intel" ;;
   *) echo "SEARCH_ARCH is arm64 or x86_64, not “$ARCH”" >&2; exit 1 ;;
 esac
-APP="$OUT/Search.app"
+PERSONAL="${SEARCH_PERSONAL_FORK:-0}"
+case "$PERSONAL" in
+  0|1) ;;
+  *) echo "SEARCH_PERSONAL_FORK is 0 or 1, not “$PERSONAL”" >&2; exit 1 ;;
+esac
 NAME="Search"
+BUNDLE_ID="com.officecommun.search"
+COPYRIGHT="© Office Commun · Search"
+FORK_NAME=""
+ICON_SOURCE="Icon/icon.swift"
+if [ "$PERSONAL" = 1 ]; then
+  [ "$STEP" = "app" ] || { echo "the personal fork only builds an app bundle" >&2; exit 1; }
+  NAME="Pane"
+  BUNDLE_ID="com.henryvn27.pane"
+  COPYRIGHT="Pane personal fork"
+  FORK_NAME="$NAME"
+  ICON_SOURCE="ForkIcon/icon.swift"
+fi
+APP="$OUT/$NAME.app"
 # Asked for with SEARCH_DEV=1, a dev build, on a yellow plate and named for
 # the feature it's built from: "Search-split-view" in the menu bar, the Dock
 # and ⌘Tab, so it's never taken for the installed app beside it, or for the
@@ -143,9 +160,19 @@ fi
 # to keep in step with anything.
 ICONSET="build/AppIcon.iconset"
 ICONDOC="build/AppIcon.icon"
+ICONCAR="build/AppIcon.car"
+if [ "$PERSONAL" = 1 ]; then
+  ICONSET="$OUT/PaneIcon.iconset"
+  ICONDOC="$OUT/PaneIcon.icon"
+  ICONCAR="$OUT/PaneIcon.car"
+fi
 rm -rf "$ICONSET" "$ICONDOC"
-SEARCH_DEV="$DEV" swift Icon/icon.swift "$ICONSET" "$ICONDOC" > /dev/null
+SEARCH_DEV="$DEV" swift "$ICON_SOURCE" "$ICONSET" "$ICONDOC" > /dev/null
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+if [ "$PERSONAL" = 1 ]; then
+  cp "$ICONSET/icon_512x512@2x.png" "$OUT/Pane-icon-preview.png"
+  cp "$ICONSET/icon_512x512@2x.png" "ForkIcon/preview.png"
+fi
 rm -rf "$ICONSET"
 # macOS 26's Dark, Clear and Tinted Dock styles read the icon from an asset
 # catalog compiled from the Icon Composer document; without one the Dock
@@ -159,7 +186,6 @@ rm -rf "$ICONSET"
 # those pictures zipped rather than lzfse'd: 666 KB of catalog instead of
 # 800, every style still in it.
 ICONNAME=""
-ICONCAR="build/AppIcon.car"
 rm -rf "$ICONCAR"
 mkdir -p "$ICONCAR"
 # Full paths: actool hands the document to a helper that runs elsewhere, and
@@ -182,8 +208,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <dict>
   <key>CFBundleName</key><string>$NAME</string>
   <key>CFBundleDisplayName</key><string>$NAME</string>
+  <key>PersonalForkName</key><string>$FORK_NAME</string>
   <key>CFBundleExecutable</key><string>$NAME</string>
-  <key>CFBundleIdentifier</key><string>com.officecommun.search</string>
+  <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$BUILD</string>
@@ -191,7 +218,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   $ICONNAME
   <key>LSMinimumSystemVersion</key><string>$MINIMUM</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
-  <key>NSHumanReadableCopyright</key><string>© Office Commun · Search</string>
+  <key>NSHumanReadableCopyright</key><string>$COPYRIGHT</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSAppleScriptEnabled</key><true/>
   <key>OSAScriptingDefinition</key><string>Search.sdef</string>
@@ -275,8 +302,12 @@ fi
 # runtime Gatekeeper insists on for anything notarised; otherwise ad-hoc,
 # which is enough for the app to run on the machine that built it — and
 # which the updater refuses to swap anything in under.
-IDENTITY="${SEARCH_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null \
-  | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"' || true)}"
+if [ "$PERSONAL" = 1 ]; then
+  IDENTITY=""
+else
+  IDENTITY="${SEARCH_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null \
+    | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"' || true)}"
+fi
 # Passkeys need an entitlement Apple grants to browsers on request, and a
 # Developer ID provisioning profile that carries it. With the profile next to
 # this script, both go in; without it, the app is signed as before, because
@@ -289,7 +320,7 @@ if [ "$STEP" = "ship" ] && [ ! -f "Search.provisionprofile" ] && [ -z "${SEARCH_
   echo "ship: Search.provisionprofile is missing here (it's git-ignored: copy it from the main checkout)" >&2
   exit 1
 fi
-if [ -f "Search.provisionprofile" ]; then
+if [ "$PERSONAL" != 1 ] && [ -f "Search.provisionprofile" ]; then
   cp "Search.provisionprofile" "$APP/Contents/embedded.provisionprofile"
   ENTITLEMENTS="Search.passkeys.entitlements"
   echo "passkeys: profile embedded"
